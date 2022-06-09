@@ -61,10 +61,8 @@ struct fcrtBare_local {
 #define Q_LEN	    4
 #define MSG_MAX_LEN 8
 static FCRT_RX_DESC * rx_dsc=NULL;
-static u32 rx_cnt;
-
-FCRT_TX_DESC * tx_dsc=NULL;
-static u32 tx_cnt;
+static FCRT_TX_DESC * tx_dsc=NULL;
+static u32 vc_cnt;
 
 static u8 ** tx_q=NULL;
 static u32 * tx_m_len;
@@ -84,12 +82,10 @@ int fcrtInit(FCRT_INIT_PARAMS * param)
 	u32 i =0;
     dev_err(dev, "[%s]", __func__);
     fcrt_alloc = param->fcrt_alloc;
-	fcrt_free = param->fcrt_free;
-    tx_cnt = param->nTx;
-    rx_cnt = param->nRx;
+    vc_cnt = param->nVC;
 	dev = param->dev;
 	dma_addr_t no_use;
-    // tx_dsc = kzalloc(tx_cnt * sizeof(FCRT_TX_DESC), GFP_KERNEL);
+    // tx_dsc = kzalloc(vc_cnt * sizeof(FCRT_TX_DESC), GFP_KERNEL);
     // rx_dsc = kzalloc(rx_cnt * sizeof(FCRT_RX_DESC), GFP_KERNEL);
     if (tx_q == NULL)
     {
@@ -216,14 +212,14 @@ int fcrtSend(unsigned int vc, void* buf, unsigned int size)
 }
 EXPORT_SYMBOL(fcrtSend);
 
-int fcrtChk(unsigned int vc)
+int fcrtRxReady(void)
 {
 	if(rx_m_len > 0)
 		return 0;
 	else
-		return -EAGAIN;
+		return -1;
 }
-EXPORT_SYMBOL(fcrtChk);
+EXPORT_SYMBOL(fcrtRxReady);
 
 int fcrtRecv(unsigned int vc, void* buf, unsigned int * size)
 {
