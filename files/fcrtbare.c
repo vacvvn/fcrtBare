@@ -58,8 +58,6 @@ struct fcrtBare_local {
 };
 
 //////////// fcrtBaremetal///////////////////////////////////
-#define Q_LEN	    4
-#define MSG_MAX_LEN 8
 static FCRT_RX_DESC * rx_dsc=NULL;
 static FCRT_TX_DESC * tx_dsc=NULL;
 static u32 vc_cnt;
@@ -188,11 +186,7 @@ int fcrtSend(unsigned int vc, void* buf, unsigned int size)
 		dev_err(dev,"[%s]Max msg len is: %d", __func__, MSG_MAX_LEN);
 		return -EINVAL;
 	}
-	if(copy_from_user(tx_q[tx_m_w_ind], buf, size)!=0)
-	{
-		dev_err(dev, "[%s]copy from user fails", __func__);
-		return -EAGAIN;
-	}
+	memcpy(tx_q[tx_m_w_ind], buf, size);
 	tx_m_len[tx_m_w_ind] = size;
 	tx_m_w_ind++;
 	if(tx_m_w_ind == Q_LEN)
@@ -214,28 +208,35 @@ EXPORT_SYMBOL(fcrtSend);
 
 int fcrtRxReady(void)
 {
-	if(rx_m_len > 0)
-		return 0;
-	else
-		return -1;
+    u32 i;
+    // dev_err(dev, "[%s]rx_m_len: %d", __func__, rx_m_len);
+	if(rx_m_cnt > 0)
+    {
+        for (i = 0; i < Q_LEN; i++)
+        {
+            if (rx_m_len[i] > 0)
+            {
+                dev_err(dev, "[%s]Qind: %d; m_len: %d", __func__, i, rx_m_len[i]);
+                return 0;
+            }
+        }
+    }
+    return -1;
 }
 EXPORT_SYMBOL(fcrtRxReady);
 
 int fcrtRecv(unsigned int vc, void* buf, unsigned int * size)
 {
-	dev_err(dev, "[%s]", __func__);
+	dev_err(dev, "[%s]; buf: %p", __func__, buf);
 	if(rx_m_cnt == 0)
 	{
 		dev_err(dev,"[%s]rcv queue is empty", __func__);
 		return -EAGAIN;
 	}
-	if(copy_to_user(buf, rx_q[rx_m_r_ind], rx_m_len[rx_m_r_ind]) != 0)
-	{
-		dev_err(dev, "[%s]copy to user fails", __func__);
-		return -EAGAIN;
-	}
+	memcpy(buf, rx_q[rx_m_r_ind], rx_m_len[rx_m_r_ind]);
 	rx_m_cnt--;
     *size = rx_m_len[rx_m_r_ind];
+	rx_m_len[rx_m_r_ind] = 0;
 
 	rx_m_r_ind++;
 	if(rx_m_r_ind == Q_LEN)
@@ -295,6 +296,7 @@ static int loop_msg(void)
 
 	memcpy(rx_q[rx_m_w_ind], tx_q[tx_m_r_ind], tx_m_len[tx_m_r_ind]);
 	rx_m_len[rx_m_w_ind] = tx_m_len[tx_m_r_ind];
+	tx_m_len[tx_m_r_ind] = 0;
 	rx_m_w_ind++;
 	if(rx_m_w_ind == Q_LEN)
 		rx_m_w_ind = 0;
