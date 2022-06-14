@@ -75,13 +75,23 @@ static fcrt_release fcrt_free = NULL;
 static void fcrtRelease(void);
 static int loop_msg(void);
 
+#ifdef FCRT_INIT_LONG_PARAM
+int fcrtInit(void* regs, FCRT_CTRL_CFG* ctrl, FCRT_TX_DESC* txCfg, FCRT_RX_DESC* rxCfg,
+unsigned nVC, fcrt_allocator fcrtAlloc)
+#else
 int fcrtInit(FCRT_INIT_PARAMS * param)
+#endif
 {
 	u32 i =0;
-    dev_err(dev, "[%s]", __func__);
+    printk(KERN_ALERT"[%s]", __func__);
+#ifdef FCRT_INIT_LONG_PARAM
+    fcrt_alloc = fcrtAlloc;
+    vc_cnt = nVC;
+#else
     fcrt_alloc = param->fcrt_alloc;
     vc_cnt = param->nVC;
 	dev = param->dev;
+#endif
 	dma_addr_t no_use;
     // tx_dsc = kzalloc(vc_cnt * sizeof(FCRT_TX_DESC), GFP_KERNEL);
     // rx_dsc = kzalloc(rx_cnt * sizeof(FCRT_RX_DESC), GFP_KERNEL);
@@ -90,39 +100,40 @@ int fcrtInit(FCRT_INIT_PARAMS * param)
 		tx_m_cnt = 0;
 		tx_m_w_ind = 0;
 		tx_m_r_ind = 0;
-#if 1
-		dev_err(dev,"\ntx_q alloc");
+
+#ifndef FCRT_INIT_LONG_PARAM
+		printk(KERN_INFO"\ntx_q alloc");
 #endif
-		tx_q = (u8**)fcrt_alloc(sizeof(u8*), Q_LEN * sizeof(u8*), &no_use);
+		tx_q = (u8**)fcrt_alloc(Q_LEN * sizeof(u8*), sizeof(u8*),  &no_use);
 		if(tx_q == NULL)
 		{
-			dev_err(dev,"[%s]cant alloc mem for tx_q", __func__);
+			printk(KERN_INFO"[%s]cant alloc mem for tx_q", __func__);
 			return -ENOMEM;
 		}
-		tx_m_len = (u32*)fcrt_alloc(sizeof(u32), Q_LEN * sizeof(u32), &no_use);
+		tx_m_len = (u32*)fcrt_alloc(Q_LEN * sizeof(u32), sizeof(u32),  &no_use);
 		if(tx_m_len == NULL)
 		{
-			dev_err(dev,"[%s]cant alloc mem for tx_m_len buf", __func__);
+			printk(KERN_INFO"[%s]cant alloc mem for tx_m_len buf", __func__);
 			return -ENOMEM;
 		}
-#if 1
+#ifndef FCRT_INIT_LONG_PARAM
 		dev_err(dev,"\ntx_q filling");
 #endif
 		for(i = 0; i < Q_LEN; i++)
 		{
-			tx_q[i] = fcrt_alloc(sizeof(u8), MSG_MAX_LEN, &no_use);
+			tx_q[i] = fcrt_alloc(MSG_MAX_LEN, sizeof(u8),  &no_use);
 			if(tx_q[i] == NULL)
 			{
-				dev_err(dev,"[%s]cant alloc mem for tx_q[%d]", __func__, i);
+				printk(KERN_INFO"[%s]cant alloc mem for tx_q[%d]", __func__, i);
 				return -ENOMEM;
 			}
 			tx_m_len[i] = 0;
 		}
-#if 1
-		dev_err(dev,"\ntx_q show");
+#ifndef FCRT_INIT_LONG_PARAM
+		printk(KERN_INFO"\ntx_q show");
 		for(i = 0; i < Q_LEN; i++)
 		{
-			dev_err(dev,"tx_q[%d]: %p", i, tx_q[i]);
+			printk(KERN_INFO"tx_q[%d]: %p", i, tx_q[i]);
 		}
 #endif
     }
@@ -132,39 +143,39 @@ int fcrtInit(FCRT_INIT_PARAMS * param)
 		rx_m_cnt = 0;
 		rx_m_w_ind = 0;
 		rx_m_r_ind = 0;
-#if 1
-		dev_err(dev,"\nrx_q alloc");
+#ifndef FCRT_INIT_LONG_PARAM
+		printk(KERN_INFO"\nrx_q alloc");
 #endif
-		rx_q = (u8**)fcrt_alloc(sizeof(u8*), Q_LEN * sizeof(u8*), &no_use);
+		rx_q = (u8**)fcrt_alloc(Q_LEN * sizeof(u8*), sizeof(u8*),  &no_use);
 		if(rx_q == NULL)
 		{
-			dev_err(dev,"[%s]cant alloc mem for rx_q", __func__);
+			printk(KERN_INFO"[%s]cant alloc mem for rx_q", __func__);
 			return -ENOMEM;
 		}
-		rx_m_len = (u32*)fcrt_alloc(sizeof(u32), Q_LEN * sizeof(u32), &no_use);
+		rx_m_len = (u32*)fcrt_alloc(Q_LEN * sizeof(u32), sizeof(u32),  &no_use);
 		if(rx_m_len == NULL)
 		{
-			dev_err(dev,"[%s]cant alloc mem for tx_m_len buf", __func__);
+			printk(KERN_INFO"[%s]cant alloc mem for tx_m_len buf", __func__);
 			return -ENOMEM;
 		}
-#if 1
+#ifndef FCRT_INIT_LONG_PARAM
 		dev_err(dev,"\nrx_q filling");
 #endif
 		for(i = 0; i < Q_LEN; i++)
 		{
-			rx_q[i] = fcrt_alloc(sizeof(u8), MSG_MAX_LEN, &no_use);
+			rx_q[i] = fcrt_alloc(MSG_MAX_LEN, sizeof(u8),  &no_use);
 			if(rx_q[i] == NULL)
 			{
-				dev_err(dev,"[%s]cant alloc mem for rx_q[%d]", __func__, i);
+				printk(KERN_INFO"[%s]cant alloc mem for rx_q[%d]", __func__, i);
 				return -ENOMEM;
 			}
 			rx_m_len[i] = 0;
 		}
-#if 1
-		dev_err(dev,"\nrx_q show");
+#ifndef FCRT_INIT_LONG_PARAM
+		printk(KERN_INFO"\nrx_q show");
 		for(i = 0; i < Q_LEN; i++)
 		{
-			dev_err(dev,"rx_q[%d]: %p", i, rx_q[i]);
+			printk(KERN_INFO"rx_q[%d]: %p", i, rx_q[i]);
 		}
 #endif
     }
@@ -175,15 +186,15 @@ EXPORT_SYMBOL(fcrtInit);
 
 int fcrtSend(unsigned int vc, void* buf, unsigned int size)
 {
-	dev_err(dev, "[%s]", __func__);
+	printk(KERN_INFO"[%s]", __func__);
 	if(tx_m_cnt == Q_LEN)
 	{
-		dev_err(dev,"[%s]tx_msg_queue is full", __func__);
+		printk(KERN_INFO"[%s]tx_msg_queue is full", __func__);
 		return -EAGAIN;
 	}
 	if(size > MSG_MAX_LEN)
 	{
-		dev_err(dev,"[%s]Max msg len is: %d", __func__, MSG_MAX_LEN);
+		printk(KERN_INFO"[%s]Max msg len is: %d", __func__, MSG_MAX_LEN);
 		return -EINVAL;
 	}
 	memcpy(tx_q[tx_m_w_ind], buf, size);
@@ -194,13 +205,11 @@ int fcrtSend(unsigned int vc, void* buf, unsigned int size)
 		tx_m_w_ind = 0;
 	}
 	tx_m_cnt++;
-#if 0
+#ifndef FCRT_INIT_LONG_PARAM
 	print_hex_dump(KERN_ALERT, "fcrtSend: ", DUMP_PREFIX_ADDRESS, 32, 1, rx_q, size, true);
 #endif
 
-#if 1
 	loop_msg();
-#endif
 
 	return 0;
 }
@@ -216,7 +225,7 @@ int fcrtRxReady(void)
         {
             if (rx_m_len[i] > 0)
             {
-                dev_err(dev, "[%s]Qind: %d; m_len: %d", __func__, i, rx_m_len[i]);
+                printk(KERN_INFO"[%s]Qind: %d; m_len: %d", __func__, i, rx_m_len[i]);
                 return 0;
             }
         }
@@ -227,10 +236,10 @@ EXPORT_SYMBOL(fcrtRxReady);
 
 int fcrtRecv(unsigned int vc, void* buf, unsigned int * size)
 {
-	dev_err(dev, "[%s]; buf: %p", __func__, buf);
+	printk(KERN_INFO"[%s]; buf: %p", __func__, buf);
 	if(rx_m_cnt == 0)
 	{
-		dev_err(dev,"[%s]rcv queue is empty", __func__);
+		printk(KERN_INFO"[%s]rcv queue is empty", __func__);
 		return -EAGAIN;
 	}
 	memcpy(buf, rx_q[rx_m_r_ind], rx_m_len[rx_m_r_ind]);
@@ -254,7 +263,7 @@ EXPORT_SYMBOL(fcrtRecv);
 
 static void fcrtRelease(void)
 {
-	dev_err(dev,"[%s]", __func__);
+	printk(KERN_INFO"[%s]", __func__);
 	if(tx_q != NULL)
 	{
 		fcrt_free(tx_q);
@@ -281,7 +290,7 @@ static int loop_msg(void)
 {
 	if(tx_m_cnt == 0)
 	{
-		dev_err(dev,"[%s]tx msg queue is empty", __func__);
+		printk(KERN_INFO"[%s]tx msg queue is empty", __func__);
 		return -EAGAIN;
 	}
 	tx_m_cnt--;
@@ -291,7 +300,7 @@ static int loop_msg(void)
 	}
 	else
 	{
-		dev_warn(dev, "[%s]RcvQueue is full. Overwrite most old received message", __func__);
+		printk(KERN_INFO"[%s]RcvQueue is full. Overwrite most old received message", __func__);
 	}
 
 	memcpy(rx_q[rx_m_w_ind], tx_q[tx_m_r_ind], tx_m_len[tx_m_r_ind]);
@@ -311,7 +320,7 @@ static int loop_msg(void)
 
 static irqreturn_t fcrtBare_irq(int irq, void *lp)
 {
-	dev_err(dev, "fcrtBare interrupt\n");
+	printk(KERN_INFO"fcrtBare interrupt\n");
 	return IRQ_HANDLED;
 }
 
@@ -323,16 +332,16 @@ static int fcrtBare_probe(struct platform_device *pdev)
 	struct fcrtBare_local *lp = NULL;
 
 	int rc = 0;
-	dev_info(dev, "Device Tree Probing\n");
+	printk(KERN_INFO"Device Tree Probing\n");
 	/* Get iospace for the device */
 	r_mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	if (!r_mem) {
-		dev_err(dev, "invalid address\n");
+		printk(KERN_INFO"invalid address\n");
 		return -ENODEV;
 	}
 	lp = (struct fcrtBare_local *) kmalloc(sizeof(struct fcrtBare_local), GFP_KERNEL);
 	if (!lp) {
-		dev_err(dev, "Cound not allocate fcrtBare device\n");
+		printk(KERN_INFO"Cound not allocate fcrtBare device\n");
 		return -ENOMEM;
 	}
 	dev_set_drvdata(dev, lp);
@@ -342,7 +351,7 @@ static int fcrtBare_probe(struct platform_device *pdev)
 	if (!request_mem_region(lp->mem_start,
 				lp->mem_end - lp->mem_start + 1,
 				DRIVER_NAME)) {
-		dev_err(dev, "Couldn't lock memory region at %p\n",
+		printk(KERN_INFO"Couldn't lock memory region at %p\n",
 			(void *)lp->mem_start);
 		rc = -EBUSY;
 		goto error1;
@@ -350,7 +359,7 @@ static int fcrtBare_probe(struct platform_device *pdev)
 
 	lp->base_addr = ioremap(lp->mem_start, lp->mem_end - lp->mem_start + 1);
 	if (!lp->base_addr) {
-		dev_err(dev, "fcrtBare: Could not allocate iomem\n");
+		printk(KERN_INFO"fcrtBare: Could not allocate iomem\n");
 		rc = -EIO;
 		goto error2;
 	}
@@ -358,8 +367,8 @@ static int fcrtBare_probe(struct platform_device *pdev)
 	/* Get IRQ for the device */
 	r_irq = platform_get_resource(pdev, IORESOURCE_IRQ, 0);
 	if (!r_irq) {
-		dev_info(dev, "no IRQ found\n");
-		dev_info(dev, "fcrtBare at 0x%08x mapped to 0x%08x\n",
+		printk(KERN_INFO"no IRQ found\n");
+		printk(KERN_INFO"fcrtBare at 0x%08x mapped to 0x%08x\n",
 			(unsigned int __force)lp->mem_start,
 			(unsigned int __force)lp->base_addr);
 		return 0;
@@ -367,12 +376,12 @@ static int fcrtBare_probe(struct platform_device *pdev)
 	lp->irq = r_irq->start;
 	rc = request_irq(lp->irq, &fcrtBare_irq, 0, DRIVER_NAME, lp);
 	if (rc) {
-		dev_err(dev, "testmodule: Could not allocate interrupt %d.\n",
+		printk(KERN_INFO"testmodule: Could not allocate interrupt %d.\n",
 			lp->irq);
 		goto error3;
 	}
 
-	dev_info(dev,"fcrtBare at 0x%08x mapped to 0x%08x, irq=%d\n",
+	printk(KERN_INFO"fcrtBare at 0x%08x mapped to 0x%08x, irq=%d\n",
 		(unsigned int __force)lp->mem_start,
 		(unsigned int __force)lp->base_addr,
 		lp->irq);
@@ -422,7 +431,7 @@ static struct platform_driver fcrtBare_driver = {
 
 static int __init fcrtBare_init(void)
 {
-	dev_err(dev, "<1>FCRT Bare Module. Hello module world.\n");
+	printk(KERN_INFO"<1>FCRT Bare Module. Hello module world.\n");
 	// dev_err("<1>FCRT Bare Module parameters were (0x%08x) and \"%s\"\n", myint,
 	    //    mystr);
 
@@ -434,7 +443,7 @@ static int __init fcrtBare_init(void)
 static void __exit fcrtBare_exit(void)
 {
 	// platform_driver_unregister(&fcrtBare_driver);
-	dev_err(dev, "FCRT Bare. Goodbye module world.\n");
+	printk(KERN_INFO"FCRT Bare. Goodbye module world.\n");
 }
 
 module_init(fcrtBare_init);
