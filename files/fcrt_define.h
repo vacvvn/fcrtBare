@@ -13,7 +13,7 @@
 /// вариант сигнатуры fcrtInit
 #define FCRT_INIT_LONG_PARAM
 #define Q_LEN	    4
-#define MSG_MAX_LEN 8
+#define MSG_MAX_LEN (32 * 1024)
 //////////////////////////
 ///максимальное количество каналов на прием и на передачу
 #define FCRT_VC_MAX         64

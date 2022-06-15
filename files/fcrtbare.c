@@ -260,6 +260,13 @@ int fcrtRecv(unsigned int vc, void* buf, unsigned int * size)
 }
 EXPORT_SYMBOL(fcrtRecv);
 
+void fcrtShow(u32 param1, int param2, int param3)
+{
+	printk(KERN_ALERT"[%s]", __func__);
+	return;
+}
+EXPORT_SYMBOL(fcrtShow);
+
 
 static void fcrtRelease(void)
 {
