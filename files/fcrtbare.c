@@ -82,103 +82,105 @@ unsigned nVC, fcrt_allocator fcrtAlloc)
 int fcrtInit(FCRT_INIT_PARAMS * param)
 #endif
 {
-	u32 i =0;
-    printk(KERN_ALERT"[%s]", __func__);
+    u32 i = 0;
+    printk(KERN_ALERT "[%s]", __func__);
 #ifdef FCRT_INIT_LONG_PARAM
     fcrt_alloc = fcrtAlloc;
     vc_cnt = nVC;
 #else
     fcrt_alloc = param->fcrt_alloc;
     vc_cnt = param->nVC;
-	dev = param->dev;
+    dev = param->dev;
 #endif
-	dma_addr_t no_use;
+    dma_addr_t no_use;
     // tx_dsc = kzalloc(vc_cnt * sizeof(FCRT_TX_DESC), GFP_KERNEL);
     // rx_dsc = kzalloc(rx_cnt * sizeof(FCRT_RX_DESC), GFP_KERNEL);
+    if (tx_q != NULL)
+    {
+        printk(KERN_ALERT "[%s]tx_q is not NULL", __func__);
+    }
+    tx_m_cnt = 0;
+    tx_m_w_ind = 0;
+    tx_m_r_ind = 0;
+
+#if 1
+    printk(KERN_ALERT "\ntx_q alloc");
+#endif
+    tx_q = (u8 **)fcrt_alloc(Q_LEN * sizeof(u8 *), sizeof(u8 *), &no_use);
     if (tx_q == NULL)
     {
-		tx_m_cnt = 0;
-		tx_m_w_ind = 0;
-		tx_m_r_ind = 0;
-
-#ifndef FCRT_INIT_LONG_PARAM
-		printk(KERN_INFO"\ntx_q alloc");
-#endif
-		tx_q = (u8**)fcrt_alloc(Q_LEN * sizeof(u8*), sizeof(u8*),  &no_use);
-		if(tx_q == NULL)
-		{
-			printk(KERN_INFO"[%s]cant alloc mem for tx_q", __func__);
-			return -ENOMEM;
-		}
-		tx_m_len = (u32*)fcrt_alloc(Q_LEN * sizeof(u32), sizeof(u32),  &no_use);
-		if(tx_m_len == NULL)
-		{
-			printk(KERN_INFO"[%s]cant alloc mem for tx_m_len buf", __func__);
-			return -ENOMEM;
-		}
-#ifndef FCRT_INIT_LONG_PARAM
-		dev_err(dev,"\ntx_q filling");
-#endif
-		for(i = 0; i < Q_LEN; i++)
-		{
-			tx_q[i] = fcrt_alloc(MSG_MAX_LEN, sizeof(u8),  &no_use);
-			if(tx_q[i] == NULL)
-			{
-				printk(KERN_INFO"[%s]cant alloc mem for tx_q[%d]", __func__, i);
-				return -ENOMEM;
-			}
-			tx_m_len[i] = 0;
-		}
-#ifndef FCRT_INIT_LONG_PARAM
-		printk(KERN_INFO"\ntx_q show");
-		for(i = 0; i < Q_LEN; i++)
-		{
-			printk(KERN_INFO"tx_q[%d]: %p", i, tx_q[i]);
-		}
-#endif
+        printk(KERN_INFO "[%s]cant alloc mem for tx_q", __func__);
+        return -ENOMEM;
     }
-	
+    tx_m_len = (u32 *)fcrt_alloc(Q_LEN * sizeof(u32), sizeof(u32), &no_use);
+    if (tx_m_len == NULL)
+    {
+        printk(KERN_INFO "[%s]cant alloc mem for tx_m_len buf", __func__);
+        return -ENOMEM;
+    }
+#ifndef FCRT_INIT_LONG_PARAM
+    dev_err(dev, "\ntx_q filling");
+#endif
+    for (i = 0; i < Q_LEN; i++)
+    {
+        tx_q[i] = fcrt_alloc(MSG_MAX_LEN, sizeof(u8), &no_use);
+        if (tx_q[i] == NULL)
+        {
+            printk(KERN_INFO "[%s]cant alloc mem for tx_q[%d]", __func__, i);
+            return -ENOMEM;
+        }
+        tx_m_len[i] = 0;
+    }
+#ifndef FCRT_INIT_LONG_PARAM
+    printk(KERN_INFO "\ntx_q show");
+    for (i = 0; i < Q_LEN; i++)
+    {
+        printk(KERN_INFO "tx_q[%d]: %p", i, tx_q[i]);
+    }
+#endif
+
+    if (rx_q != NULL)
+    {
+        printk(KERN_ALERT "[%s]rx_q is not NULL", __func__);
+    }
+    rx_m_cnt = 0;
+    rx_m_w_ind = 0;
+    rx_m_r_ind = 0;
+#ifndef FCRT_INIT_LONG_PARAM
+    printk(KERN_INFO "\nrx_q alloc");
+#endif
+    rx_q = (u8 **)fcrt_alloc(Q_LEN * sizeof(u8 *), sizeof(u8 *), &no_use);
     if (rx_q == NULL)
     {
-		rx_m_cnt = 0;
-		rx_m_w_ind = 0;
-		rx_m_r_ind = 0;
-#ifndef FCRT_INIT_LONG_PARAM
-		printk(KERN_INFO"\nrx_q alloc");
-#endif
-		rx_q = (u8**)fcrt_alloc(Q_LEN * sizeof(u8*), sizeof(u8*),  &no_use);
-		if(rx_q == NULL)
-		{
-			printk(KERN_INFO"[%s]cant alloc mem for rx_q", __func__);
-			return -ENOMEM;
-		}
-		rx_m_len = (u32*)fcrt_alloc(Q_LEN * sizeof(u32), sizeof(u32),  &no_use);
-		if(rx_m_len == NULL)
-		{
-			printk(KERN_INFO"[%s]cant alloc mem for tx_m_len buf", __func__);
-			return -ENOMEM;
-		}
-#ifndef FCRT_INIT_LONG_PARAM
-		dev_err(dev,"\nrx_q filling");
-#endif
-		for(i = 0; i < Q_LEN; i++)
-		{
-			rx_q[i] = fcrt_alloc(MSG_MAX_LEN, sizeof(u8),  &no_use);
-			if(rx_q[i] == NULL)
-			{
-				printk(KERN_INFO"[%s]cant alloc mem for rx_q[%d]", __func__, i);
-				return -ENOMEM;
-			}
-			rx_m_len[i] = 0;
-		}
-#ifndef FCRT_INIT_LONG_PARAM
-		printk(KERN_INFO"\nrx_q show");
-		for(i = 0; i < Q_LEN; i++)
-		{
-			printk(KERN_INFO"rx_q[%d]: %p", i, rx_q[i]);
-		}
-#endif
+        printk(KERN_INFO "[%s]cant alloc mem for rx_q", __func__);
+        return -ENOMEM;
     }
+    rx_m_len = (u32 *)fcrt_alloc(Q_LEN * sizeof(u32), sizeof(u32), &no_use);
+    if (rx_m_len == NULL)
+    {
+        printk(KERN_INFO "[%s]cant alloc mem for tx_m_len buf", __func__);
+        return -ENOMEM;
+    }
+#ifndef FCRT_INIT_LONG_PARAM
+    dev_err(dev, "\nrx_q filling");
+#endif
+    for (i = 0; i < Q_LEN; i++)
+    {
+        rx_q[i] = fcrt_alloc(MSG_MAX_LEN, sizeof(u8), &no_use);
+        if (rx_q[i] == NULL)
+        {
+            printk(KERN_INFO "[%s]cant alloc mem for rx_q[%d]", __func__, i);
+            return -ENOMEM;
+        }
+        rx_m_len[i] = 0;
+    }
+#ifndef FCRT_INIT_LONG_PARAM
+    printk(KERN_INFO "\nrx_q show");
+    for (i = 0; i < Q_LEN; i++)
+    {
+        printk(KERN_INFO "rx_q[%d]: %p", i, rx_q[i]);
+    }
+#endif
     return 0;
 }
 EXPORT_SYMBOL(fcrtInit);
