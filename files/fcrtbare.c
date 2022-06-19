@@ -96,7 +96,7 @@ static void show_rxq_elem(struct fcrtRxQueue * ptr)
 	printk(KERN_ALERT "queue addr");
 	for (j = 0; j < ptr->q_len; j++)
 	{
-		printk(KERN_ALERT "v.addr: %p; m_len: %d", ptr->rx_q[j], ptr->rx_m_len[j]);
+		printk(KERN_ALERT "[%d]:v.addr: %p; m_len: %d", j, ptr->rx_q[j], ptr->rx_m_len[j]);
 	}
 }
 
@@ -309,8 +309,7 @@ int fcrtRxReady(void)
 	if(ptr->rx_m_cnt > 0)
 	{
 		i = cur_ind;
-		printk(KERN_INFO "[%s]Qind: %d; m_len: %d; asm_id: 0x%x",
-			   __func__, i, ptr->rx_m_len[i], ptr->asm_id);
+		printk(KERN_INFO "[%s]vcd_ind: %d; msg_cnt: %d", __func__, i, ptr->rx_m_cnt);
 	}
 	cur_ind++;
 	if(cur_ind == vc_cnt)
