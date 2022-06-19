@@ -226,6 +226,7 @@ int fcrtInit(FCRT_INIT_PARAMS * param)
 #endif
 {
     u32 i = 0;
+	dma_addr_t no_use;
     printk(KERN_ALERT "[%s]", __func__);
 #ifdef FCRT_INIT_LONG_PARAM
     fcrt_alloc = fcrtAlloc;
