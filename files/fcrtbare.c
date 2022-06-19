@@ -62,9 +62,12 @@ static FCRT_RX_DESC * rx_dsc=NULL;
 static FCRT_TX_DESC * tx_dsc=NULL;
 static u32 vc_cnt;
 
-static u8 ** tx_q=NULL;
-static u32 * tx_m_len;
+///одна очередь для сообщений всех каналов
+static u8 ** tx_q=NULL;//message addr
+static u32 * tx_m_len;//msg len
+static u32 * tx_m_vc;//msg vc
 static u32 tx_m_cnt, tx_m_w_ind, tx_m_r_ind;
+///одна очередь для сообщений всех каналов
 static u8 ** rx_q=NULL;
 static u32 * rx_m_len;
 static u32 rx_m_cnt, rx_m_w_ind, rx_m_r_ind;
@@ -74,6 +77,110 @@ static fcrt_release fcrt_free = NULL;
 
 static void fcrtRelease(void);
 static int loop_msg(void);
+
+static int setup_rx_queue(void)
+{
+    dma_addr_t no_use;
+	u32 i;
+    if (rx_q != NULL)
+    {
+        printk(KERN_ALERT "[%s]rx_q is not NULL", __func__);
+    }
+    rx_m_cnt = 0;
+    rx_m_w_ind = 0;
+    rx_m_r_ind = 0;
+#if 1
+    printk(KERN_INFO "\nrx_q alloc");
+#endif
+    rx_q = (u8 **)fcrt_alloc(TX_Q_LEN * sizeof(u8 *), sizeof(u8 *), &no_use);
+    if (rx_q == NULL)
+    {
+        printk(KERN_INFO "[%s]cant alloc mem for rx_q", __func__);
+        return -ENOMEM;
+    }
+    rx_m_len = (u32 *)fcrt_alloc(TX_Q_LEN * sizeof(u32), sizeof(u32), &no_use);
+    if (rx_m_len == NULL)
+    {
+        printk(KERN_INFO "[%s]cant alloc mem for tx_m_len buf", __func__);
+        return -ENOMEM;
+    }
+#if 1
+    printk(KERN_ALERT"rx_q filling");
+#endif
+    for (i = 0; i < TX_Q_LEN; i++)
+    {
+        rx_q[i] = fcrt_alloc(MSG_MAX_LEN, sizeof(u8), &no_use);
+        if (rx_q[i] == NULL)
+        {
+            printk(KERN_INFO "[%s]cant alloc mem for rx_q[%d]", __func__, i);
+            return -ENOMEM;
+        }
+        rx_m_len[i] = 0;
+    }
+#if 1
+    printk(KERN_INFO "\nrx_q show");
+    for (i = 0; i < TX_Q_LEN; i++)
+    {
+        printk(KERN_INFO "rx_q[%d]: %p", i, rx_q[i]);
+    }
+#endif
+}
+//выделяет память для очереди исходящих сообщений
+static int setup_tx_queue(void)
+{
+    dma_addr_t no_use;
+	u32 i;
+	if (tx_q != NULL)
+    {
+        printk(KERN_ALERT "[%s]tx_q is not NULL", __func__);
+    }
+    tx_m_cnt = 0;
+    tx_m_w_ind = 0;
+    tx_m_r_ind = 0;
+
+#if 1
+    printk(KERN_ALERT "\ntx_q alloc");
+#endif
+	tx_q = (u8 **)fcrt_alloc(RX_Q_LEN * sizeof(u8 *), sizeof(u8 *), &no_use);
+	if (tx_q == NULL)
+	{
+		printk(KERN_ALERT "[%s]cant alloc mem for tx_q", __func__);
+		return -ENOMEM;
+	}
+	tx_m_len = (u32 *)fcrt_alloc(RX_Q_LEN * sizeof(u32), sizeof(u32), &no_use);
+	if (tx_m_len == NULL)
+	{
+		printk(KERN_ALERT "[%s]cant alloc mem for tx_m_len buf", __func__);
+		return -ENOMEM;
+	}
+	tx_m_vc = (u32 *)fcrt_alloc(RX_Q_LEN * sizeof(u32), sizeof(u32), &no_use);
+	if (tx_m_vc == NULL)
+	{
+		printk(KERN_ALERT "[%s]cant alloc mem for tx_m_vc buf", __func__);
+		return -ENOMEM;
+	}
+#if 1
+	printk(KERN_ALERT"tx_q filling");
+#endif
+	for (i = 0; i < RX_Q_LEN; i++)
+	{
+		tx_q[i] = fcrt_alloc(MSG_MAX_LEN, sizeof(u8), &no_use);
+		if (tx_q[i] == NULL)
+		{
+			printk(KERN_ALERT "[%s]cant alloc mem for tx_q[%d]", __func__, i);
+			return -ENOMEM;
+		}
+		tx_m_len[i] = 0;
+	}
+#if 1
+    printk(KERN_INFO "\ntx_q show");
+    for (i = 0; i < RX_Q_LEN; i++)
+    {
+        printk(KERN_INFO "tx_q[%d]: %p", i, tx_q[i]);
+    }
+#endif
+	return 0;
+}
 
 #ifdef FCRT_INIT_LONG_PARAM
 int fcrtInit(void* regs, FCRT_CTRL_CFG* ctrl, FCRT_TX_DESC* txCfg, FCRT_RX_DESC* rxCfg,
@@ -92,95 +199,21 @@ int fcrtInit(FCRT_INIT_PARAMS * param)
     vc_cnt = param->nVC;
     dev = param->dev;
 #endif
-    dma_addr_t no_use;
     // tx_dsc = kzalloc(vc_cnt * sizeof(FCRT_TX_DESC), GFP_KERNEL);
     // rx_dsc = kzalloc(rx_cnt * sizeof(FCRT_RX_DESC), GFP_KERNEL);
-    if (tx_q != NULL)
+    
+	if(setup_tx_queue() != 0)
     {
-        printk(KERN_ALERT "[%s]tx_q is not NULL", __func__);
-    }
-    tx_m_cnt = 0;
-    tx_m_w_ind = 0;
-    tx_m_r_ind = 0;
+		printk(KERN_ALERT"setup tx queue fails");
+		return -ENOMEM;
+	}
 
-#if 1
-    printk(KERN_ALERT "\ntx_q alloc");
-#endif
-    tx_q = (u8 **)fcrt_alloc(Q_LEN * sizeof(u8 *), sizeof(u8 *), &no_use);
-    if (tx_q == NULL)
+	if(setup_rx_queue() != 0)
     {
-        printk(KERN_INFO "[%s]cant alloc mem for tx_q", __func__);
-        return -ENOMEM;
-    }
-    tx_m_len = (u32 *)fcrt_alloc(Q_LEN * sizeof(u32), sizeof(u32), &no_use);
-    if (tx_m_len == NULL)
-    {
-        printk(KERN_INFO "[%s]cant alloc mem for tx_m_len buf", __func__);
-        return -ENOMEM;
-    }
-#ifndef FCRT_INIT_LONG_PARAM
-    dev_err(dev, "\ntx_q filling");
-#endif
-    for (i = 0; i < Q_LEN; i++)
-    {
-        tx_q[i] = fcrt_alloc(MSG_MAX_LEN, sizeof(u8), &no_use);
-        if (tx_q[i] == NULL)
-        {
-            printk(KERN_INFO "[%s]cant alloc mem for tx_q[%d]", __func__, i);
-            return -ENOMEM;
-        }
-        tx_m_len[i] = 0;
-    }
-#ifndef FCRT_INIT_LONG_PARAM
-    printk(KERN_INFO "\ntx_q show");
-    for (i = 0; i < Q_LEN; i++)
-    {
-        printk(KERN_INFO "tx_q[%d]: %p", i, tx_q[i]);
-    }
-#endif
+		printk(KERN_ALERT"setup rx queue fails");
+		return -ENOMEM;
+	}
 
-    if (rx_q != NULL)
-    {
-        printk(KERN_ALERT "[%s]rx_q is not NULL", __func__);
-    }
-    rx_m_cnt = 0;
-    rx_m_w_ind = 0;
-    rx_m_r_ind = 0;
-#ifndef FCRT_INIT_LONG_PARAM
-    printk(KERN_INFO "\nrx_q alloc");
-#endif
-    rx_q = (u8 **)fcrt_alloc(Q_LEN * sizeof(u8 *), sizeof(u8 *), &no_use);
-    if (rx_q == NULL)
-    {
-        printk(KERN_INFO "[%s]cant alloc mem for rx_q", __func__);
-        return -ENOMEM;
-    }
-    rx_m_len = (u32 *)fcrt_alloc(Q_LEN * sizeof(u32), sizeof(u32), &no_use);
-    if (rx_m_len == NULL)
-    {
-        printk(KERN_INFO "[%s]cant alloc mem for tx_m_len buf", __func__);
-        return -ENOMEM;
-    }
-#ifndef FCRT_INIT_LONG_PARAM
-    dev_err(dev, "\nrx_q filling");
-#endif
-    for (i = 0; i < Q_LEN; i++)
-    {
-        rx_q[i] = fcrt_alloc(MSG_MAX_LEN, sizeof(u8), &no_use);
-        if (rx_q[i] == NULL)
-        {
-            printk(KERN_INFO "[%s]cant alloc mem for rx_q[%d]", __func__, i);
-            return -ENOMEM;
-        }
-        rx_m_len[i] = 0;
-    }
-#ifndef FCRT_INIT_LONG_PARAM
-    printk(KERN_INFO "\nrx_q show");
-    for (i = 0; i < Q_LEN; i++)
-    {
-        printk(KERN_INFO "rx_q[%d]: %p", i, rx_q[i]);
-    }
-#endif
     return 0;
 }
 EXPORT_SYMBOL(fcrtInit);
