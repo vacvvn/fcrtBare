@@ -57,17 +57,30 @@ struct fcrtBare_local {
 	void __iomem *base_addr;
 };
 
+struct fcrtRxQueue
+{
+	u32 asm_id;
+	u32 q_len;
+	u32 max_m_len;
+	u8 ** rx_q;
+	u32 * rx_m_len;
+	u32 rx_m_cnt;
+	u32 rx_m_w_ind;
+	u32 rx_m_r_ind;
+};
+
 //////////// fcrtBaremetal///////////////////////////////////
 static FCRT_RX_DESC * rx_dsc=NULL;
 static FCRT_TX_DESC * tx_dsc=NULL;
-static u32 vc_cnt;
+static int vc_cnt;
 
-static u8 ** tx_q=NULL;
-static u32 * tx_m_len;
+///одна очередь для сообщений всех каналов
+static u8 ** tx_q=NULL;//message addr
+static u32 * tx_m_len;//msg len
+static u32 * tx_m_vc;//msg vc
 static u32 tx_m_cnt, tx_m_w_ind, tx_m_r_ind;
-static u8 ** rx_q=NULL;
-static u32 * rx_m_len;
-static u32 rx_m_cnt, rx_m_w_ind, rx_m_r_ind;
+
+static struct fcrtRxQueue * rx_q;
 
 static fcrt_allocator fcrt_alloc = NULL;
 static fcrt_release fcrt_free = NULL;
@@ -75,27 +88,85 @@ static fcrt_release fcrt_free = NULL;
 static void fcrtRelease(void);
 static int loop_msg(void);
 
-#ifdef FCRT_INIT_LONG_PARAM
-int fcrtInit(void* regs, FCRT_CTRL_CFG* ctrl, FCRT_TX_DESC* txCfg, FCRT_RX_DESC* rxCfg,
-unsigned nVC, fcrt_allocator fcrtAlloc)
-#else
-int fcrtInit(FCRT_INIT_PARAMS * param)
-#endif
+static void show_rxq_elem(struct fcrtRxQueue * ptr)
 {
-    u32 i = 0;
-    printk(KERN_ALERT "[%s]", __func__);
-#ifdef FCRT_INIT_LONG_PARAM
-    fcrt_alloc = fcrtAlloc;
-    vc_cnt = nVC;
-#else
-    fcrt_alloc = param->fcrt_alloc;
-    vc_cnt = param->nVC;
-    dev = param->dev;
+	int j;
+	printk(KERN_ALERT"Base ptr: %p", ptr);
+	printk(KERN_ALERT "asm_id: 0x%x; q_depth: %d; msg_max_len: %d", ptr->asm_id, ptr->q_len, ptr->max_m_len);
+	printk(KERN_ALERT "queue addr");
+	for (j = 0; j < ptr->q_len; j++)
+	{
+		printk(KERN_ALERT "[%d]:v.addr: %p; m_len: %d", j, ptr->rx_q[j], ptr->rx_m_len[j]);
+	}
+}
+
+static void show_rx_queue(struct fcrtRxQueue * rxq, u32 nVC)
+{
+	u32 i;
+	struct fcrtRxQueue * ptr = rxq;
+	for(i = 0; i < nVC; i++)
+	{
+		printk(KERN_ALERT"------rx queue[%d]-----", i);
+		show_rxq_elem(&rxq[i]);
+	}
+}
+
+static int setup_rx_queue(FCRT_RX_DESC * rxd, struct fcrtRxQueue * rxq)
+{
+	u32 i;
+	dma_addr_t no_use;
+    if (rxq->rx_q != NULL)
+    {
+        printk(KERN_ALERT "[%s]VC[%d]rx_q is not NULL", __func__, rxq->asm_id);
+    }
+	rxq->rx_m_cnt = 0;
+	rxq->rx_m_w_ind = 0;
+	rxq->rx_m_r_ind = 0;
+	rxq->q_len = rxd->q_depth;
+	rxq->asm_id = rxd->asm_id;
+	rxq->max_m_len = rxd->max_size;
+
+    rxq->rx_q = (u8 **)fcrt_alloc(rxq->q_len * sizeof(u8 *), sizeof(u8 *), &no_use);
+    if (rxq->rx_q == NULL)
+    {
+        printk(KERN_INFO "[%s]cant alloc mem for rx_q", __func__);
+        return -ENOMEM;
+    }
+    rxq->rx_m_len = (u32 *)fcrt_alloc(rxq->q_len * sizeof(u32), sizeof(u32), &no_use);
+    if (rxq->rx_m_len == NULL)
+    {
+        printk(KERN_INFO "[%s]cant alloc mem for tx_m_len buf", __func__);
+        return -ENOMEM;
+    }
+#if 0
+    printk(KERN_ALERT"rx_q filling");
 #endif
+    for (i = 0; i < rxq->q_len; i++)
+    {
+        rxq->rx_q[i] = fcrt_alloc(rxq->max_m_len, sizeof(u8), &no_use);
+        if (rxq->rx_q[i] == NULL)
+        {
+            printk(KERN_INFO "[%s]cant alloc mem for vc[%d]rx_q", __func__, rxq->asm_id);
+            return -ENOMEM;
+        }
+        rxq->rx_m_len[i] = 0;
+    }
+#if 0
+    printk(KERN_INFO "\nrx_q show");
+    for (i = 0; i < rxq->q_len; i++)
+    {
+        printk(KERN_INFO "rx_q[%d]: %p", i, rxq->rx_q[i]);
+    }
+#endif
+}
+
+//
+//выделяет память для очереди исходящих сообщений
+static int setup_tx_queue(void)
+{
     dma_addr_t no_use;
-    // tx_dsc = kzalloc(vc_cnt * sizeof(FCRT_TX_DESC), GFP_KERNEL);
-    // rx_dsc = kzalloc(rx_cnt * sizeof(FCRT_RX_DESC), GFP_KERNEL);
-    if (tx_q != NULL)
+	u32 i;
+	if (tx_q != NULL)
     {
         printk(KERN_ALERT "[%s]tx_q is not NULL", __func__);
     }
@@ -106,80 +177,90 @@ int fcrtInit(FCRT_INIT_PARAMS * param)
 #if 1
     printk(KERN_ALERT "\ntx_q alloc");
 #endif
-    tx_q = (u8 **)fcrt_alloc(Q_LEN * sizeof(u8 *), sizeof(u8 *), &no_use);
-    if (tx_q == NULL)
-    {
-        printk(KERN_INFO "[%s]cant alloc mem for tx_q", __func__);
-        return -ENOMEM;
-    }
-    tx_m_len = (u32 *)fcrt_alloc(Q_LEN * sizeof(u32), sizeof(u32), &no_use);
-    if (tx_m_len == NULL)
-    {
-        printk(KERN_INFO "[%s]cant alloc mem for tx_m_len buf", __func__);
-        return -ENOMEM;
-    }
-#ifndef FCRT_INIT_LONG_PARAM
-    dev_err(dev, "\ntx_q filling");
+	tx_q = (u8 **)fcrt_alloc(TX_Q_LEN * sizeof(u8 *), sizeof(u8 *), &no_use);
+	if (tx_q == NULL)
+	{
+		printk(KERN_ALERT "[%s]cant alloc mem for tx_q", __func__);
+		return -ENOMEM;
+	}
+	tx_m_len = (u32 *)fcrt_alloc(TX_Q_LEN * sizeof(u32), sizeof(u32), &no_use);
+	if (tx_m_len == NULL)
+	{
+		printk(KERN_ALERT "[%s]cant alloc mem for tx_m_len buf", __func__);
+		return -ENOMEM;
+	}
+	tx_m_vc = (u32 *)fcrt_alloc(TX_Q_LEN * sizeof(u32), sizeof(u32), &no_use);
+	if (tx_m_vc == NULL)
+	{
+		printk(KERN_ALERT "[%s]cant alloc mem for tx_m_vc buf", __func__);
+		return -ENOMEM;
+	}
+#if 1
+	printk(KERN_ALERT"tx_q filling");
 #endif
-    for (i = 0; i < Q_LEN; i++)
-    {
-        tx_q[i] = fcrt_alloc(MSG_MAX_LEN, sizeof(u8), &no_use);
-        if (tx_q[i] == NULL)
-        {
-            printk(KERN_INFO "[%s]cant alloc mem for tx_q[%d]", __func__, i);
-            return -ENOMEM;
-        }
-        tx_m_len[i] = 0;
-    }
-#ifndef FCRT_INIT_LONG_PARAM
+	for (i = 0; i < TX_Q_LEN; i++)
+	{
+		tx_q[i] = fcrt_alloc(MSG_MAX_LEN, sizeof(u8), &no_use);
+		if (tx_q[i] == NULL)
+		{
+			printk(KERN_ALERT "[%s]cant alloc mem for tx_q[%d]", __func__, i);
+			return -ENOMEM;
+		}
+		tx_m_len[i] = 0;
+	}
+#if 1
     printk(KERN_INFO "\ntx_q show");
-    for (i = 0; i < Q_LEN; i++)
+    for (i = 0; i < RX_Q_LEN; i++)
     {
         printk(KERN_INFO "tx_q[%d]: %p", i, tx_q[i]);
     }
 #endif
+	return 0;
+}
 
-    if (rx_q != NULL)
-    {
-        printk(KERN_ALERT "[%s]rx_q is not NULL", __func__);
-    }
-    rx_m_cnt = 0;
-    rx_m_w_ind = 0;
-    rx_m_r_ind = 0;
-#ifndef FCRT_INIT_LONG_PARAM
-    printk(KERN_INFO "\nrx_q alloc");
+#ifdef FCRT_INIT_LONG_PARAM
+int fcrtInit(void* regs, FCRT_CTRL_CFG* ctrl, FCRT_TX_DESC* txCfg, FCRT_RX_DESC* rxCfg,
+unsigned nVC, fcrt_allocator fcrtAlloc)
+#else
+int fcrtInit(FCRT_INIT_PARAMS * param)
 #endif
-    rx_q = (u8 **)fcrt_alloc(Q_LEN * sizeof(u8 *), sizeof(u8 *), &no_use);
-    if (rx_q == NULL)
-    {
-        printk(KERN_INFO "[%s]cant alloc mem for rx_q", __func__);
-        return -ENOMEM;
-    }
-    rx_m_len = (u32 *)fcrt_alloc(Q_LEN * sizeof(u32), sizeof(u32), &no_use);
-    if (rx_m_len == NULL)
-    {
-        printk(KERN_INFO "[%s]cant alloc mem for tx_m_len buf", __func__);
-        return -ENOMEM;
-    }
-#ifndef FCRT_INIT_LONG_PARAM
-    dev_err(dev, "\nrx_q filling");
+{
+    u32 i = 0;
+	dma_addr_t no_use;
+    printk(KERN_ALERT "[%s]", __func__);
+#ifdef FCRT_INIT_LONG_PARAM
+    fcrt_alloc = fcrtAlloc;
+    vc_cnt = nVC;
+#else
+    fcrt_alloc = param->fcrt_alloc;
+    vc_cnt = param->nVC;
+    dev = param->dev;
 #endif
-    for (i = 0; i < Q_LEN; i++)
+    // tx_dsc = kzalloc(vc_cnt * sizeof(FCRT_TX_DESC), GFP_KERNEL);
+    // rx_dsc = kzalloc(rx_cnt * sizeof(FCRT_RX_DESC), GFP_KERNEL);
+    
+	if(setup_tx_queue() != 0)
     {
-        rx_q[i] = fcrt_alloc(MSG_MAX_LEN, sizeof(u8), &no_use);
-        if (rx_q[i] == NULL)
-        {
-            printk(KERN_INFO "[%s]cant alloc mem for rx_q[%d]", __func__, i);
-            return -ENOMEM;
-        }
-        rx_m_len[i] = 0;
-    }
-#ifndef FCRT_INIT_LONG_PARAM
-    printk(KERN_INFO "\nrx_q show");
-    for (i = 0; i < Q_LEN; i++)
-    {
-        printk(KERN_INFO "rx_q[%d]: %p", i, rx_q[i]);
-    }
+		printk(KERN_ALERT"setup tx queue fails");
+		return -ENOMEM;
+	}
+
+	rx_q = fcrt_alloc(vc_cnt * (sizeof(struct fcrtRxQueue)), sizeof(struct fcrtRxQueue), &no_use);
+	if(rx_q == NULL)
+	{
+		printk(KERN_ALERT"could not alloc fcrtRxQueue memory");
+		return -ENOMEM;
+	}
+	for(i = 0; i < vc_cnt; i++)
+	{
+		if(setup_rx_queue(&rxCfg[i], &rx_q[i]) != 0)
+		{
+			printk(KERN_ALERT"setup rx queue fails");
+			return -ENOMEM;
+		}
+	}
+#if 1
+	show_rx_queue(rx_q, vc_cnt);
 #endif
     return 0;
 }
@@ -189,7 +270,7 @@ EXPORT_SYMBOL(fcrtInit);
 int fcrtSend(unsigned int vc, void* buf, unsigned int size)
 {
 	printk(KERN_INFO"[%s]", __func__);
-	if(tx_m_cnt == Q_LEN)
+	if(tx_m_cnt == TX_Q_LEN)
 	{
 		printk(KERN_INFO"[%s]tx_msg_queue is full", __func__);
 		return -EAGAIN;
@@ -201,13 +282,14 @@ int fcrtSend(unsigned int vc, void* buf, unsigned int size)
 	}
 	memcpy(tx_q[tx_m_w_ind], buf, size);
 	tx_m_len[tx_m_w_ind] = size;
+	tx_m_vc[tx_m_w_ind] = vc;
 	tx_m_w_ind++;
-	if(tx_m_w_ind == Q_LEN)
+	if(tx_m_w_ind == TX_Q_LEN)
 	{
 		tx_m_w_ind = 0;
 	}
 	tx_m_cnt++;
-#ifndef FCRT_INIT_LONG_PARAM
+#if 1
 	print_hex_dump(KERN_ALERT, "fcrtSend: ", DUMP_PREFIX_ADDRESS, 32, 1, rx_q, size, true);
 #endif
 
@@ -219,40 +301,52 @@ EXPORT_SYMBOL(fcrtSend);
 
 int fcrtRxReady(void)
 {
-    u32 i;
+	static int cur_ind = 0;
+	int i = -1;
+	if(rx_q == NULL)
+		return -1;
+	struct fcrtRxQueue * ptr = &rx_q[cur_ind];
     // dev_err(dev, "[%s]rx_m_len: %d", __func__, rx_m_len);
-	if(rx_m_cnt > 0)
-    {
-        for (i = 0; i < Q_LEN; i++)
-        {
-            if (rx_m_len[i] > 0)
-            {
-                printk(KERN_INFO"[%s]Qind: %d; m_len: %d", __func__, i, rx_m_len[i]);
-                return 0;
-            }
-        }
-    }
-    return -1;
+	if(ptr->rx_m_cnt > 0)
+	{
+		i = cur_ind;
+		printk(KERN_INFO "[%s]vcd_ind: %d; msg_cnt: %d", __func__, i, ptr->rx_m_cnt);
+	}
+	cur_ind++;
+	if(cur_ind == vc_cnt)
+	{
+		cur_ind = 0;
+	}
+	return i;
 }
 EXPORT_SYMBOL(fcrtRxReady);
 
 int fcrtRecv(unsigned int vc, void* buf, unsigned int * size)
 {
+	struct fcrtRxQueue * ptr;
+	u32 ri;
 	printk(KERN_INFO"[%s]; buf: %p", __func__, buf);
-	if(rx_m_cnt == 0)
+	if(vc >= vc_cnt)
 	{
-		printk(KERN_INFO"[%s]rcv queue is empty", __func__);
+		printk(KERN_ALERT"[%s]invalid vc ind: %d", __func__, vc);
+		return -EINVAL;
+	}
+	if(rx_q[vc].rx_m_cnt == 0)
+	{
+		printk(KERN_INFO"[%s]rcv[%d] queue is empty", __func__, vc);
 		return -EAGAIN;
 	}
-	memcpy(buf, rx_q[rx_m_r_ind], rx_m_len[rx_m_r_ind]);
-	rx_m_cnt--;
-    *size = rx_m_len[rx_m_r_ind];
-	rx_m_len[rx_m_r_ind] = 0;
+	ptr = &rx_q[vc];
+	ri = ptr->rx_m_r_ind;
+	memcpy(buf, ptr->rx_q[ri], ptr->rx_m_len[ri]);
+    *size = ptr->rx_m_len[ri];
+	ptr->rx_m_len[ri] = 0;
 
-	rx_m_r_ind++;
-	if(rx_m_r_ind == Q_LEN)
+	ptr->rx_m_cnt--;
+	ptr->rx_m_r_ind++;
+	if(ptr->rx_m_r_ind == ptr->q_len)
 	{
-		rx_m_r_ind = 0;
+		ptr->rx_m_r_ind = 0;
 	}
 #if 1
     print_hex_dump(KERN_ALERT, "fcrtRecv: ", DUMP_PREFIX_ADDRESS, 32, 1, buf, *size,
@@ -297,33 +391,39 @@ static void fcrtRelease(void)
 ///копируем сообщение из очереди передачи в очередь приема
 static int loop_msg(void)
 {
+	struct fcrtRxQueue * ptr;
+	int res = -EAGAIN;
 	if(tx_m_cnt == 0)
 	{
 		printk(KERN_INFO"[%s]tx msg queue is empty", __func__);
 		return -EAGAIN;
 	}
-	tx_m_cnt--;
-	if(rx_m_cnt < Q_LEN)
+	u32 len = tx_m_len[tx_m_r_ind];
+	u32 vcd_ind = tx_m_vc[tx_m_r_ind];
+	ptr = &rx_q[vcd_ind];
+	if(ptr->rx_m_cnt < ptr->q_len)
 	{
-		rx_m_cnt++;
+		u32 w_ind = ptr->rx_m_w_ind;
+		ptr->rx_m_cnt++;
+		tx_m_cnt--;
+		memcpy(ptr->rx_q[w_ind], tx_q[tx_m_r_ind], len);
+		ptr->rx_m_len[w_ind] = len;
+		tx_m_len[tx_m_r_ind] = 0;
+		ptr->rx_m_w_ind++;
+		if(ptr->rx_m_w_ind == ptr->q_len)
+			ptr->rx_m_w_ind = 0;
+
+		tx_m_r_ind++;
+		if(tx_m_r_ind == TX_Q_LEN)
+			tx_m_r_ind = 0;
+		res = 0;
 	}
 	else
 	{
-		printk(KERN_INFO"[%s]RcvQueue is full. Overwrite most old received message", __func__);
+		printk(KERN_INFO"[%s]RcvQueue is full", __func__);
 	}
 
-	memcpy(rx_q[rx_m_w_ind], tx_q[tx_m_r_ind], tx_m_len[tx_m_r_ind]);
-	rx_m_len[rx_m_w_ind] = tx_m_len[tx_m_r_ind];
-	tx_m_len[tx_m_r_ind] = 0;
-	rx_m_w_ind++;
-	if(rx_m_w_ind == Q_LEN)
-		rx_m_w_ind = 0;
-
-	tx_m_r_ind++;
-	if(tx_m_r_ind == Q_LEN)
-		tx_m_r_ind = 0;
-	
-	return 0;
+	return res;
 }
 ///////////////////////////////////////
 
