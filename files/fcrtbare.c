@@ -29,6 +29,7 @@
 #include <linux/of_platform.h>
 
 #include "fcrt_define.h"
+#include "fcrtLib.h"
 
 /* Standard module information, edit as appropriate */
 MODULE_LICENSE("GPL");
@@ -71,8 +72,8 @@ struct fcrtRxQueue
 };
 
 //////////// fcrtBaremetal///////////////////////////////////
-static FCRT_RX_DESC *rx_dsc = NULL;
-static FCRT_TX_DESC *tx_dsc = NULL;
+static FCRT_RX_CFG *rx_dsc = NULL;
+static FCRT_TX_CFG *tx_dsc = NULL;
 static int vc_cnt;
 
 ///одна очередь для сообщений всех каналов
@@ -114,7 +115,7 @@ static void show_rx_queue(struct fcrtRxQueue *rxq, u32 nVC)
     }
 }
 
-static int setup_rx_queue(FCRT_RX_DESC *rxd, struct fcrtRxQueue *rxq)
+static int setup_rx_queue(FCRT_RX_CFG *rxd, struct fcrtRxQueue *rxq)
 {
     u32 i;
 #if 1
@@ -227,7 +228,7 @@ static int setup_tx_queue(void)
 }
 
 #ifdef FCRT_INIT_LONG_PARAM
-int fcrtInit(void *regs, FCRT_CTRL_CFG *ctrl, FCRT_TX_DESC *txCfg, FCRT_RX_DESC *rxCfg,
+int fcrtInit(void *regs, FCRT_CTRL_CFG *ctrl, FCRT_TX_CFG *txCfg, FCRT_RX_CFG *rxCfg,
              unsigned nVC, fcrt_allocator fcrtAlloc)
 #else
 int fcrtInit(FCRT_INIT_PARAMS *param)
@@ -244,8 +245,8 @@ int fcrtInit(FCRT_INIT_PARAMS *param)
     vc_cnt = param->nVC;
     dev = param->dev;
 #endif
-    // tx_dsc = kzalloc(vc_cnt * sizeof(FCRT_TX_DESC), GFP_KERNEL);
-    // rx_dsc = kzalloc(rx_cnt * sizeof(FCRT_RX_DESC), GFP_KERNEL);
+    // tx_dsc = kzalloc(vc_cnt * sizeof(FCRT_TX_CFG), GFP_KERNEL);
+    // rx_dsc = kzalloc(rx_cnt * sizeof(FCRT_RX_CFG), GFP_KERNEL);
 
     if (setup_tx_queue() != 0)
     {
@@ -277,7 +278,9 @@ EXPORT_SYMBOL(fcrtInit);
 
 int fcrtSend(unsigned int vc, void *buf, unsigned int size)
 {
+#if 0
     printk(KERN_INFO "[%s]", __func__);
+#endif
     if (tx_m_cnt == TX_Q_LEN)
     {
         printk(KERN_INFO "[%s]tx_msg_queue is full", __func__);
@@ -300,12 +303,16 @@ int fcrtSend(unsigned int vc, void *buf, unsigned int size)
         tx_m_w_ind = 0;
     }
     tx_m_cnt++;
-#if 1
+#if 0
     print_hex_dump(KERN_ALERT, "fcrtSend: ", DUMP_PREFIX_ADDRESS, 32, 1, rx_q, size,
                    true);
 #endif
 
-    loop_msg();
+    if(loop_msg() < 0)
+    {
+        printk(KERN_INFO"[%s]loop_msg fails", __func__);
+        return -EAGAIN;
+    }
 
     return 0;
 }
@@ -322,7 +329,9 @@ int fcrtRxReady(void)
     if (ptr->rx_m_cnt > 0)
     {
         i = cur_ind;
+#if 0
         printk(KERN_INFO "[%s]vcd_ind: %d; msg_cnt: %d", __func__, i, ptr->rx_m_cnt);
+#endif
     }
     cur_ind++;
     if (cur_ind == vc_cnt)
@@ -337,7 +346,9 @@ int fcrtRecv(unsigned int vc, void *buf, unsigned int *size)
 {
     struct fcrtRxQueue *ptr;
     u32 ri;
+#if 0
     printk(KERN_INFO "[%s]; buf: %p", __func__, buf);
+#endif
     if (vc >= vc_cnt)
     {
         printk(KERN_ALERT "[%s]invalid vc ind: %d", __func__, vc);
@@ -360,7 +371,7 @@ int fcrtRecv(unsigned int vc, void *buf, unsigned int *size)
     {
         ptr->rx_m_r_ind = 0;
     }
-#if 1
+#if 0
     print_hex_dump(KERN_ALERT, "fcrtRecv: ", DUMP_PREFIX_ADDRESS, 32, 1, buf, *size,
                    true);
 #endif
