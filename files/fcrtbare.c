@@ -570,21 +570,21 @@ static struct platform_driver fcrtBare_driver = {
     // .remove		= fcrtBare_remove,
 };
 
-static int __init fcrtBare_init(void)
-{
-    printk(KERN_INFO "<1>FCRT Bare Module. Hello module world.\n");
-    // dev_err("<1>FCRT Bare Module parameters were (0x%08x) and \"%s\"\n", myint,
-    //    mystr);
+// static int __init fcrtBare_init(void)
+// {
+//     printk(KERN_INFO "<1>FCRT Bare Module. Hello module world.\n");
+//     // dev_err("<1>FCRT Bare Module parameters were (0x%08x) and \"%s\"\n", myint,
+//     //    mystr);
 
-    // return platform_driver_register(&fcrtBare_driver);
-    return 0;
-}
+//     // return platform_driver_register(&fcrtBare_driver);
+//     return 0;
+// }
 
-static void __exit fcrtBare_exit(void)
-{
-    // platform_driver_unregister(&fcrtBare_driver);
-    printk(KERN_INFO "FCRT Bare. Goodbye module world.\n");
-}
+// static void __exit fcrtBare_exit(void)
+// {
+//     // platform_driver_unregister(&fcrtBare_driver);
+//     printk(KERN_INFO "FCRT Bare. Goodbye module world.\n");
+// }
 
-module_init(fcrtBare_init);
-module_exit(fcrtBare_exit);
+// module_init(fcrtBare_init);
+// module_exit(fcrtBare_exit);
