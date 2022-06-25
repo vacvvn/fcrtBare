@@ -76,11 +76,15 @@ static FCRT_RX_CFG *rx_dsc = NULL;
 static FCRT_TX_CFG *tx_dsc = NULL;
 static int vc_cnt;
 
+#define NOT_INITED  0
+#define INITED_OK   1
+#define AVARIA      2
 ///одна очередь для сообщений всех каналов
 static u8 **tx_q = NULL; // message addr
 static u32 *tx_m_len;    // msg len
 static u32 *tx_m_vc;     // msg vc
 static u32 tx_m_cnt, tx_m_w_ind, tx_m_r_ind;
+static u32 glob_state = NOT_INITED;
 
 static struct fcrtRxQueue *rx_q;
 
@@ -118,7 +122,7 @@ static void show_rx_queue(struct fcrtRxQueue *rxq, u32 nVC)
 static int setup_rx_queue(FCRT_RX_CFG *rxd, struct fcrtRxQueue *rxq)
 {
     u32 i;
-#if 1
+#if 0
     printk(KERN_ALERT "[%s]rx desc. asm_id: %x; q len: %d; msg len: %x", __func__,
            rxd->asm_id, rxd->q_depth, rxd->max_size);
 #endif
@@ -183,7 +187,7 @@ static int setup_tx_queue(void)
     tx_m_w_ind = 0;
     tx_m_r_ind = 0;
 
-#if 1
+#if 0
     printk(KERN_ALERT "\ntx_q alloc. Tx q len: %d", TX_Q_LEN);
 #endif
     tx_q = (u8 **)fcrt_alloc(TX_Q_LEN * sizeof(u8 *), sizeof(u8 *), &no_use);
@@ -204,7 +208,7 @@ static int setup_tx_queue(void)
         printk(KERN_ALERT "[%s]cant alloc mem for tx_m_vc buf", __func__);
         return -ENOMEM;
     }
-#if 1
+#if 0
     printk(KERN_ALERT "tx_q filling");
 #endif
     for (i = 0; i < TX_Q_LEN; i++)
@@ -217,7 +221,7 @@ static int setup_tx_queue(void)
         }
         tx_m_len[i] = 0;
     }
-#if 1
+#if 0
     printk(KERN_INFO "\ntx_q show");
     for (i = 0; i < TX_Q_LEN; i++)
     {
@@ -236,6 +240,7 @@ int fcrtInit(FCRT_INIT_PARAMS *param)
 {
     u32 i = 0;
     dma_addr_t no_use;
+    glob_state = NOT_INITED;
     printk(KERN_ALERT "[%s]VCcnt: %d", __func__, nVC);
 #ifdef FCRT_INIT_LONG_PARAM
     fcrt_alloc = fcrtAlloc;
@@ -269,9 +274,11 @@ int fcrtInit(FCRT_INIT_PARAMS *param)
             return -ENOMEM;
         }
     }
-#if 1
+#if 0
     show_rx_queue(rx_q, vc_cnt);
 #endif
+
+    glob_state = INITED_OK;
     return 0;
 }
 EXPORT_SYMBOL(fcrtInit);
@@ -281,6 +288,13 @@ int fcrtSend(unsigned int vc, void *buf, unsigned int size)
 #if 0
     printk(KERN_INFO "[%s]", __func__);
 #endif
+
+    if(glob_state != INITED_OK)
+    {
+        printk(KERN_ALERT "[%s]fcrt was not initialised yet. state: %d", __func__,
+               glob_state);
+        return -EINVAL;
+    }
     if (tx_m_cnt == TX_Q_LEN)
     {
         printk(KERN_INFO "[%s]tx_msg_queue is full", __func__);
@@ -322,6 +336,12 @@ int fcrtRxReady(void)
 {
     static int cur_ind = 0;
     int i = -1;
+    if(glob_state != INITED_OK)
+    {
+        printk(KERN_ALERT "[%s]fcrt was not initialised yet. state: %d", __func__,
+               glob_state);
+        return -EINVAL;
+    }
     if (rx_q == NULL)
         return -1;
     struct fcrtRxQueue *ptr = &rx_q[cur_ind];
@@ -346,6 +366,12 @@ int fcrtRecv(unsigned int vc, void *buf, unsigned int *size)
 {
     struct fcrtRxQueue *ptr;
     u32 ri;
+    if(glob_state != INITED_OK)
+    {
+        printk(KERN_ALERT "[%s]fcrt was not initialised yet. state: %d", __func__,
+               glob_state);
+        return -EINVAL;
+    }
 #if 0
     printk(KERN_INFO "[%s]; buf: %p", __func__, buf);
 #endif
@@ -382,6 +408,12 @@ EXPORT_SYMBOL(fcrtRecv);
 void fcrtShow(u32 param1, int param2, int param3)
 {
     printk(KERN_ALERT "[%s]", __func__);
+    if(glob_state != INITED_OK)
+    {
+        printk(KERN_ALERT "[%s]fcrt was not initialised yet. state: %d", __func__,
+               glob_state);
+        return -EINVAL;
+    }
     return;
 }
 EXPORT_SYMBOL(fcrtShow);
@@ -389,6 +421,7 @@ EXPORT_SYMBOL(fcrtShow);
 static void fcrtRelease(void)
 {
     printk(KERN_INFO "[%s]", __func__);
+    glob_state = NOT_INITED;
     if (tx_q != NULL)
     {
         fcrt_free(tx_q);
@@ -415,6 +448,12 @@ static int loop_msg(void)
 {
     struct fcrtRxQueue *ptr;
     int res = -EAGAIN;
+    if(glob_state != INITED_OK)
+    {
+        printk(KERN_ALERT "[%s]fcrt was not initialised yet. state: %d", __func__,
+               glob_state);
+        return -EINVAL;
+    }
     if (tx_m_cnt == 0)
     {
         printk(KERN_INFO "[%s]tx msg queue is empty", __func__);
